@@ -93,6 +93,3 @@ docker run -p 8000:8000 notification-service
 
 ---
 
-## Author
-
-Azeem P H
