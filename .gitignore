@@ -1,0 +1,42 @@
+# 🔹 Python virtual environment
+venv/
+.venv/
+env/
+
+# 🔹 Environment variables
+.env
+
+# 🔹 Python cache
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+
+# 🔹 Django
+db.sqlite3
+*.log
+staticfiles/
+media/
+
+# 🔹 Migrations (optional – keep if needed)
+# **/migrations/*.py
+# !**/migrations/__init__.py
+
+# 🔹 JWT / Security files
+*.pem
+jwt_keys/
+
+# 🔹 IDE files
+.idea/
+.vscode/
+
+# 🔹 OS files
+.DS_Store
+Thumbs.db
+
+# 🔹 Docker
+.dockerignore
+
+# 🔹 Misc
+*.swp
+*.bak
