@@ -1,31 +1,35 @@
-# Base image
-FROM python:3.11-slim
+FROM python:3.13-slim
 
-# Environment variables
-ENV PYTHONDONTWRITEBYTECODE=1
-ENV PYTHONUNBUFFERED=1
+ENV PYTHONDONTWRITEBYTECODE=1 \
+    PYTHONUNBUFFERED=1 \
+    PYTHONPATH=/opt/labora \
+    JWT_PUBLIC_KEY_PATH=/app/jwt_keys/public.pem \
+    DJANGO_SERVICE=notificationservice
 
-# Set working directory
 WORKDIR /app
 
-# Install system dependencies (optional but good)
-RUN apt-get update && apt-get install -y \
-    build-essential \
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    gcc \
+    netcat-openbsd \
     && rm -rf /var/lib/apt/lists/*
 
-# Copy requirements
-COPY requirements.txt .
+RUN useradd -m -u 10001 appuser
 
-# Install Python dependencies
-RUN pip install --upgrade pip
-RUN pip install -r requirements.txt
+COPY labora_shared /opt/labora/labora_shared
 
-# Copy project files
-COPY . .
+COPY NotificationService_labora/requirements.txt /tmp/requirements.txt
+RUN pip install --no-cache-dir --upgrade pip && \
+    pip install --no-cache-dir -r /tmp/requirements.txt
 
-# Expose Django port
+COPY NotificationService_labora/ /app/
+
+RUN if [ -f /app/entrypoint-asgi.sh ]; then mv /app/entrypoint-asgi.sh /app/entrypoint.sh; fi && \
+    chmod +x /app/entrypoint.sh && \
+    mkdir -p /app/jwt_keys && \
+    chown -R appuser:appuser /app
+
+USER appuser
+
 EXPOSE 8000
 
-# Run Django with Gunicorn
-CMD ["daphne", "-b", "0.0.0.0", "-p", "8000", "notificationservice.asgi:application"]
-
+ENTRYPOINT ["/app/entrypoint.sh"]
