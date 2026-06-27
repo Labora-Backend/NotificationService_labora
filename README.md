@@ -1,95 +1,98 @@
 # Notification Service
 
-This is a Django-based notification service built as part of my microservice backend project.
+Notification Service stores user notifications and delivers them in real time over WebSockets. Other services call its internal APIs or the shared notification client to create notification records and fan them out through Redis-backed Django Channels.
 
-The main purpose of this service is to handle notifications and real-time communication using WebSockets.
+## Responsibilities
 
----
+- Persist notifications for platform users.
+- List a user's notifications and unread count.
+- Mark one or all user notifications as read.
+- Create notifications from internal services.
+- Broadcast notifications to multiple users through an internal endpoint.
+- Deliver real-time events to authenticated WebSocket connections.
 
-## What this service does
+## Features
 
-* Sends notifications
-* Handles real-time communication using Django Channels
-* Works as a separate service in a microservice architecture
+- Per-user notification feed.
+- Read/unread state management.
+- Internal notification creation and broadcast.
+- WebSocket group delivery on `user_<user_id>`.
+- Redis-backed channel layer.
 
----
+## API Endpoints
 
-## Tech Used
+Base path: `/api/`
 
-* Python
-* Django
-* Django Channels
-* WebSockets
-* Docker
+| Method | Path | Auth | Description |
+| --- | --- | --- | --- |
+| `GET` | `notifications/` | Bearer JWT | List notifications for the authenticated user. |
+| `GET` | `notifications/unread-count/` | Bearer JWT | Return unread notification count. |
+| `PATCH` | `notifications/<notification_id>/read/` | Bearer JWT | Mark one notification as read. |
+| `PATCH` | `notifications/read-all/` | Bearer JWT | Mark all authenticated user's notifications as read. |
 
----
+## Internal Service Endpoints
 
-## Project Structure
+Internal endpoints use `X-Service-Key: <SERVICE_API_KEY>`.
 
-```text
-NotificationService/
-│
-├── myapp/                 # App logic (consumers, models, views)
-├── notificationservice/   # Main Django project
-├── jwt_keys/              # JWT keys (ignored in git)
-├── manage.py
-├── requirements.txt
-├── Dockerfile
-├── .gitignore
-└── README.md
-```
+| Method | Path | Description |
+| --- | --- | --- |
+| `POST` | `internal/notifications/create/` | Create and deliver one notification. Expects `user_id`, `type`, `title`, `message`, optional `payload`. |
+| `GET` | `internal/notifications/` | Return paginated notification summaries. |
+| `GET` | `internal/notifications/<notification_id>/` | Return one notification summary. |
+| `POST` | `internal/notifications/broadcast/` | Create notifications for supplied `user_ids`. |
 
----
+## WebSocket API
 
-## How to Run
+| Path | Auth | Description |
+| --- | --- | --- |
+| `ws/notifications/?token=<JWT>` | Query-string JWT | Subscribe to notifications for the authenticated user. |
 
-### 1. Clone the repo
+The consumer sends JSON containing `id`, `type`, `title`, `message`, `payload`, `is_read`, and `created_at`.
+
+## Authentication
+
+REST endpoints use `myapp.authentication.CustomJWTAuthentication`. WebSocket authentication is handled by `myapp.middleware.JWTAuthMiddleware`, which decodes the `token` query parameter with the shared RS256 public key.
+
+## Environment Variables
+
+| Variable | Purpose |
+| --- | --- |
+| `DJANGO_SECRET_KEY` | Django secret key. |
+| `DEBUG` | Enables debug mode when set to `1`, `true`, or `yes`. |
+| `ALLOWED_HOSTS` | Comma-separated allowed hosts. Defaults to `*`. |
+| `DB_HOST`, `DB_PORT`, `DB_NAME`, `DB_USER`, `DB_PASSWORD` | MySQL database configuration. |
+| `JWT_PUBLIC_KEY_PATH` | Public key used for REST and WebSocket JWT verification. |
+| `SERVICE_API_KEY` | Shared key for internal endpoints. |
+| `REDIS_HOST`, `REDIS_PORT` | Redis connection used by Channels. Defaults to `127.0.0.1:6379`. |
+| `*_SERVICE_URL` | Optional service URL settings loaded by settings. |
+
+## Setup
 
 ```bash
-git clone https://github.com/YOUR-USERNAME/NotificationService.git
-cd NotificationService
-```
-
-### 2. Create virtual environment
-
-```bash
-python -m venv venv
-venv\Scripts\activate
-```
-
-### 3. Install dependencies
-
-```bash
+cd NotificationService_labora
+python -m venv .venv
+.venv\Scripts\activate
 pip install -r requirements.txt
-```
-
-### 4. Run migrations
-
-```bash
 python manage.py migrate
+daphne notificationservice.asgi:application -p 8010
 ```
 
-### 5. Start server
+Redis must be running for WebSocket delivery.
 
-```bash
-python manage.py runserver
-```
+## Service Architecture
 
----
+- Django project: `notificationservice`
+- App: `myapp`
+- REST views: `myapp/views.py`
+- Notification fan-out helper: `myapp/services.py`
+- WebSocket consumer: `myapp/consumers.py`
+- Channel routing: `myapp/routing.py`
+- Internal permission: `myapp.permissions.internal_service.IsInternalService`
 
-## Run with Docker
+## Database Models
 
-```bash
-docker build -t notification-service .
-docker run -p 8000:8000 notification-service
-```
+- `Notification`: stores `user_id`, `notification_type`, `title`, `message`, JSON `payload`, read flag, and creation timestamp.
 
----
+## Notification/Event Flow
 
-## Notes
-
-* `.env`, `jwt_keys/`, and `.pem` files are ignored for security
-* This service is part of a larger backend system
-
----
-
+`create_notification()` writes a notification row, builds a payload, and sends it through the Channels layer to group `user_<user_id>`. Connected WebSocket clients for that user receive the event immediately.
